@@ -1,6 +1,50 @@
 version: '3.8'
 
 services:
+  # Kafka in KRaft mode (no ZooKeeper)
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    networks:
+      - microservices-net
+    environment:
+      # KRaft mode configuration
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/tmp/kafka-logs
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Kafka UI for monitoring (optional but helpful)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8085:8080"
+    networks:
+      - microservices-net
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    depends_on:
+      - kafka
+
   item-service:
     build: ./item-service
     container_name: item-service
@@ -11,6 +55,10 @@ services:
     environment:
       - SERVER_PORT=8081
       - SPRING_APPLICATION_NAME=item-service
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   order-service:
     build: ./order-service
@@ -22,6 +70,10 @@ services:
     environment:
       - SERVER_PORT=8082
       - SPRING_APPLICATION_NAME=order-service
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   payment-service:
     build: ./payment-service
@@ -33,22 +85,30 @@ services:
     environment:
       - SERVER_PORT=8083
       - SPRING_APPLICATION_NAME=payment-service
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   api-gateway:
     build: ./api-gateway
     container_name: api-gateway
     ports:
       - "8080:8080"
-    depends_on:
-      - item-service
-      - order-service
-      - payment-service
     networks:
       - microservices-net
     environment:
       - SERVER_PORT=8080
       - SPRING_APPLICATION_NAME=api-gateway
+    depends_on:
+      - item-service
+      - order-service
+      - payment-service
+      - kafka
 
 networks:
   microservices-net:
     driver: bridge
+
+volumes:
+  kafka-data:
