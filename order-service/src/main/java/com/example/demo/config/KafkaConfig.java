@@ -42,8 +42,19 @@ public class KafkaConfig {
                 .build();
     }
 
+    // If you need the topic names as String beans, use DIFFERENT method names
     @Bean
-    public String orderCreatedTopic() {
+    public String orderCreatedTopicName() {
         return orderCreatedTopic;
+    }
+    
+    @Bean
+    public String inventoryReservedTopicName() {
+        return inventoryReservedTopic;
+    }
+    
+    @Bean
+    public String billingProcessedTopicName() {
+        return billingProcessedTopic;
     }
 }
